@@ -2,24 +2,35 @@
 
 更新时间：**2026-03-25**
 
-若当前代码在 **monorepo** 内（路径如 **`2.0/php/A`**），要推送 **整个仓库** 时请参阅仓库根目录 **`GITHUB_PUSH.md`**。
-
-当前整仓远程：**https://github.com/hk59775634/vpn1**
+当前 A 站独立仓库：**https://github.com/hk59775634/vpn-control-plane**  
+（可选）monorepo：**https://github.com/hk59775634/vpn1**
 
 ---
 
-## 方案 A：按当前实际（推荐，整仓推送）
+## 方案 A：推送到 A 站独立仓库（推荐）
 
-在仓库根目录执行：
+若你在 **A 站独立代码目录**（如 `/opt/vpn-control-plane` 或本仓库内的 `2.0/php/A`）执行：
+
+```bash
+git remote add origin https://github.com/hk59775634/vpn-control-plane.git
+git branch -M main
+git push -u origin main
+```
+
+## 方案 B：从 monorepo 仅推送 A 站子目录（高级）
+
+当你在 monorepo 根目录（如 `/opt/vpn1`）维护，但要把 `2.0/php/A` 同步到 A 站独立仓库，可用 `git subtree`：
 
 ```bash
 cd /opt/vpn1
-git add -A
-git commit -m "docs: update A-site markdown"
-git push origin main
+git remote add a_origin https://github.com/hk59775634/vpn-control-plane.git
+git subtree split --prefix=2.0/php/A -b a-site-main
+git push a_origin a-site-main:main
 ```
 
-## 方案 B：仅 A 站独立仓库（可选）
+（如需覆盖远端历史可用 `--force`，谨慎使用。）
+
+## 方案 C：新建你自己的 A 站仓库（可选）
 
 1. 在 GitHub 网页：**New repository**  
    - Repository name：`vpn-control-plane`  

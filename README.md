@@ -45,9 +45,10 @@
 
 见 **`docs/GITHUB_PUSH.md`**。若整仓为 monorepo（含 `2.0/`），请使用仓库根目录 **`GITHUB_PUSH.md`**。
 
-### 当前整仓地址
+### 仓库地址
 
-- Monorepo：**https://github.com/hk59775634/vpn1**
+- A 站（独立仓库）：**https://github.com/hk59775634/vpn-control-plane**
+- （可选）monorepo：**https://github.com/hk59775634/vpn1**（若你仍保留整仓镜像）
 
 ---
 
