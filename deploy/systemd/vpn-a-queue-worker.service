@@ -1,0 +1,17 @@
+[Unit]
+Description=VPN A Laravel Queue Worker
+After=network.target mariadb.service redis.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/vpn1/2.0/php/A
+ExecStart=/usr/bin/php artisan queue:work --queue=maintenance,default --sleep=1 --tries=3 --max-time=3600
+Restart=always
+RestartSec=3
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target
+

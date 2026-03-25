@@ -1,0 +1,4 @@
+# Python 3.10+
+# gRPC 与控制面通信时可按需添加：
+# grpcio>=1.50.0
+# grpcio-tools>=1.50.0

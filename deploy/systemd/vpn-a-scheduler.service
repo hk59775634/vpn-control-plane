@@ -1,0 +1,16 @@
+[Unit]
+Description=VPN A Laravel Scheduler
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/vpn1/2.0/php/A
+ExecStart=/bin/bash -lc 'while true; do /usr/bin/php artisan schedule:run --no-interaction; sleep 60; done'
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+
