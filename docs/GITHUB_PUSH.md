@@ -1,8 +1,25 @@
-# 首次推送到 GitHub（vpn-control-plane）
+# A 站文档：推送到 GitHub
+
+更新时间：**2026-03-25**
 
 若当前代码在 **monorepo** 内（路径如 **`2.0/php/A`**），要推送 **整个仓库** 时请参阅仓库根目录 **`GITHUB_PUSH.md`**。
 
+当前整仓远程：**https://github.com/hk59775634/vpn1**
+
 ---
+
+## 方案 A：按当前实际（推荐，整仓推送）
+
+在仓库根目录执行：
+
+```bash
+cd /opt/vpn1
+git add -A
+git commit -m "docs: update A-site markdown"
+git push origin main
+```
+
+## 方案 B：仅 A 站独立仓库（可选）
 
 1. 在 GitHub 网页：**New repository**  
    - Repository name：`vpn-control-plane`  

@@ -1,8 +1,9 @@
-# vpn-control-plane
+# vpn-control-plane（A 站）
 
 > **GitHub 仓库描述（Description）建议填写：** `A 站控制面 — Laravel 管理后台与 API，VPN SaaS 控制面。`
 
-独立 Laravel 应用：管理后台、分销商/订单/产品与对外 API。**单独部署**到一台服务器，Web 根目录指向 `public/`。
+独立 Laravel 应用：管理后台、分销商/订单/产品与对外 API。**单独部署**到一台服务器，Web 根目录指向 `public/`。  
+更新时间：**2026-03-25**（按当前仓库实现同步）。
 
 ## 功能概览
 
@@ -16,6 +17,18 @@
 根路径 `/` 重定向到 `/admin`。
 
 技术栈：PHP 8.2+、Laravel、MySQL（推荐）或 SQLite、Vite 前端资源。
+
+## 当前落地能力（实装）
+
+- **Agent 控制面**：`/api/v1/agent/bootstrap`、`/api/v1/agent/heartbeat`、`/api/v1/agent/commands/ack`、安装清单/打包下载。
+- **心跳策略 `policy`**：
+  - 一体拓扑 NAT：`ip_forward` + `iptables`（可持久化）；
+  - WireGuard 按用户限速：`tc`（peer 内网 IP 维度）；
+  - 流量超额：下发剔除 peer。
+- **产品限额**：`bandwidth_limit_kbps`、`traffic_quota_bytes`（留空=不限）。
+- **流量入账**：Agent 上报 `wg_peer_transfer`，A 站写入 `traffic_logs`。
+- **SNAT / 独立公网 IP**：IP 池分配、SNAT 映射、审计日志与管理端查询。
+- **OCServ**：节点侧支持自动部署（`protocol=ocserv` 时）。
 
 ### FreeRADIUS / Redis（可选）
 
@@ -31,6 +44,10 @@
 ### 推送到 GitHub（单仓 A 站时）
 
 见 **`docs/GITHUB_PUSH.md`**。若整仓为 monorepo（含 `2.0/`），请使用仓库根目录 **`GITHUB_PUSH.md`**。
+
+### 当前整仓地址
+
+- Monorepo：**https://github.com/hk59775634/vpn1**
 
 ---
 
