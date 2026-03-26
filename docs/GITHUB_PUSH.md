@@ -3,7 +3,6 @@
 更新时间：**2026-03-25**
 
 当前 A 站独立仓库：**https://github.com/hk59775634/vpn-control-plane**  
-（可选）monorepo：**https://github.com/hk59775634/vpn1**
 
 ---
 
