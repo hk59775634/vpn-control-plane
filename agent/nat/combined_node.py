@@ -4,26 +4,55 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import logging
 from typing import Any
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from common.config import get_wg_interface, skip_system_commands
 from nat.iptables_nat import apply_nat_rules
 
+logger = logging.getLogger(__name__)
 
-def _run(cmd: list[str]) -> None:
-    subprocess.run(cmd, capture_output=True, check=False)
+
+def _run(cmd: list[str]) -> bool:
+    p = subprocess.run(cmd, capture_output=True, check=False, text=True)
+    if p.returncode != 0:
+        logger.warning("command failed: %s rc=%s stderr=%s", cmd, p.returncode, (p.stderr or "").strip())
+        return False
+    return True
 
 
 def _ensure_sysctl_forward(persist: bool) -> None:
     if skip_system_commands():
         return
     if persist:
-        path = "/etc/sysctl.d/99-vpn-node-ip-forward.conf"
+        path = "/etc/sysctl.conf"
         try:
-            os.makedirs(os.path.dirname(path), mode=0o755, exist_ok=True)
-            with open(path, "w", encoding="utf-8") as f:
-                f.write("net.ipv4.ip_forward=1\n")
+            existing = ""
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    existing = f.read()
+            except FileNotFoundError:
+                existing = ""
+
+            lines = existing.splitlines()
+            found = False
+            out: list[str] = []
+            for line in lines:
+                stripped = line.strip()
+                if stripped.startswith("net.ipv4.ip_forward"):
+                    out.append("net.ipv4.ip_forward=1")
+                    found = True
+                else:
+                    out.append(line)
+            if not found:
+                if out and out[-1].strip() != "":
+                    out.append("")
+                out.append("net.ipv4.ip_forward=1")
+            new_content = "\n".join(out).rstrip("\n") + "\n"
+            if new_content != existing:
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(new_content)
             _run(["sysctl", "-q", "-p", path])
         except OSError:
             _run(["sysctl", "-w", "net.ipv4.ip_forward=1"])

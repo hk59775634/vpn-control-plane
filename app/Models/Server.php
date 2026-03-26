@@ -61,6 +61,8 @@ class Server extends Model
         'agent_deploy_at',
         'config_revision_ts',
         'agent_reported_config_ts',
+        'online_users',
+        'online_sessions',
     ];
 
     protected $casts = [
@@ -84,6 +86,8 @@ class Server extends Model
         'split_nat_ssh_password' => 'encrypted',
         'split_nat_multi_public_ip_enabled' => 'boolean',
         'agent_enabled' => 'boolean',
+        'online_users' => 'integer',
+        'online_sessions' => 'array',
     ];
 
     public function exitNodes(): HasMany

@@ -34,15 +34,39 @@ TLS_DIR = "/etc/ocserv/ssl"
 TLS_CERT = f"{TLS_DIR}/server.crt"
 TLS_KEY = f"{TLS_DIR}/server.key"
 
+def _write_file_if_changed(path: str, content: str, mode: int | None = None) -> bool:
+    old = None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            old = f.read()
+    except FileNotFoundError:
+        old = None
+    except OSError:
+        old = None
 
-def reload_ocserv() -> None:
+    if old == content:
+        return False
+    os.makedirs(os.path.dirname(path), mode=0o755, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(content)
+    if mode is not None:
+        os.chmod(path, mode)
+    return True
+
+
+def reload_ocserv() -> bool:
     if skip_system_commands():
-        return
-    subprocess.run(
+        return False
+    p = subprocess.run(
         ["systemctl", "reload", "ocserv"],
         capture_output=True,
         check=False,
+        text=True,
     )
+    if p.returncode != 0:
+        logger.warning("ocserv: reload failed: %s", p.stderr or p.stdout)
+        return False
+    return True
 
 
 def _first_ipv4_cidr() -> str:
@@ -116,17 +140,15 @@ def _install_debian_packages() -> None:
         raise RuntimeError("ocserv: apt install ocserv failed; check network and apt sources")
 
 
-def _write_tls_files() -> None:
+def _write_tls_files() -> bool:
     cert, key = get_ocserv_tls_pem_from_env()
     if not cert or not key:
         raise RuntimeError("NODE_OCSERV_TLS_CERT_B64 / NODE_OCSERV_TLS_KEY_B64 missing or invalid")
     os.makedirs(TLS_DIR, mode=0o755, exist_ok=True)
-    with open(TLS_CERT, "w", encoding="utf-8") as f:
-        f.write(cert)
-    with open(TLS_KEY, "w", encoding="utf-8") as f:
-        f.write(key)
-    os.chmod(TLS_CERT, 0o644)
-    os.chmod(TLS_KEY, 0o600)
+    changed = False
+    changed = _write_file_if_changed(TLS_CERT, cert, 0o644) or changed
+    changed = _write_file_if_changed(TLS_KEY, key, 0o600) or changed
+    return changed
 
 
 def _ensure_radcli_dictionary() -> None:
@@ -155,14 +177,13 @@ def _ensure_radcli_dictionary() -> None:
     )
 
 
-def _write_radcli() -> None:
+def _write_radcli() -> bool:
     host = get_ocserv_radius_host()
     secret = get_ocserv_radius_secret()
     if not host or not secret:
         raise RuntimeError("NODE_OCSERV_RADIUS_HOST or RADIUS secret missing")
     auth = get_ocserv_radius_auth_port()
     acct = get_ocserv_radius_acct_port()
-    os.makedirs(os.path.dirname(RADCLI_CONF), mode=0o755, exist_ok=True)
     # radcli：authserver / acctserver 与 servers 文件（见 ocserv README-radius）
     lines = [
         "dictionary /etc/radcli/dictionary",
@@ -174,17 +195,14 @@ def _write_radcli() -> None:
         f"servers {RADCLI_SERVERS}",
         "",
     ]
-    with open(RADCLI_CONF, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines))
-    os.chmod(RADCLI_CONF, 0o644)
+    changed = _write_file_if_changed(RADCLI_CONF, "\n".join(lines), 0o644)
     # servers：hostname<TAB>secret<TAB>timeout
     srv_line = f"{host}\t{secret}\t5\n"
-    with open(RADCLI_SERVERS, "w", encoding="utf-8") as f:
-        f.write(srv_line)
-    os.chmod(RADCLI_SERVERS, 0o600)
+    changed = _write_file_if_changed(RADCLI_SERVERS, srv_line, 0o600) or changed
+    return changed
 
 
-def _write_ocserv_conf() -> None:
+def _write_ocserv_conf() -> bool:
     port = get_ocserv_port()
     domain = get_ocserv_domain() or "vpn.local"
     dns = get_node_wg_dns()
@@ -206,12 +224,11 @@ server-cert = {TLS_CERT}
 server-key = {TLS_KEY}
 auth = "radius[config={RADCLI_CONF},groupconfig=true]"
 acct = "radius[config={RADCLI_CONF}]"
+use-occtl = true
+occtl-socket-file = /var/run/occtl.socket
 stats-report-time = 300
 """
-    os.makedirs(os.path.dirname(OCSERV_CONF), mode=0o755, exist_ok=True)
-    with open(OCSERV_CONF, "w", encoding="utf-8") as f:
-        f.write(body)
-    os.chmod(OCSERV_CONF, 0o644)
+    return _write_file_if_changed(OCSERV_CONF, body, 0o644)
 
 
 def _ensure_run_ocserv_dir() -> None:
@@ -229,11 +246,23 @@ def _write_ocserv_systemd_dropin() -> None:
     os.chmod(p, 0o644)
 
 
-def _systemd_enable_ocserv() -> None:
+def _systemd_enable_ocserv(changed_ocserv: bool, changed_radcli: bool, changed_tls: bool) -> None:
     _ensure_run_ocserv_dir()
     _write_ocserv_systemd_dropin()
     subprocess.run(["systemctl", "daemon-reload"], capture_output=True, check=False)
     subprocess.run(["systemctl", "enable", "ocserv"], capture_output=True, check=False)
+
+    st = subprocess.run(["systemctl", "is-active", "ocserv"], capture_output=True, text=True)
+    active = (st.stdout or "").strip() == "active"
+    if not (changed_ocserv or changed_radcli or changed_tls) and active:
+        return
+
+    # 仅 radcli 变更时优先 reload（更平滑）；失败再 fallback restart
+    if changed_radcli and not (changed_ocserv or changed_tls) and active:
+        if reload_ocserv():
+            logger.info("ocserv: reloaded (radcli changed)")
+            return
+
     r = subprocess.run(
         ["systemctl", "restart", "ocserv"],
         capture_output=True,
@@ -254,10 +283,10 @@ def ensure_ocserv_deployed() -> None:
     try:
         _install_debian_packages()
         _ensure_radcli_dictionary()
-        _write_tls_files()
-        _write_radcli()
-        _write_ocserv_conf()
-        _systemd_enable_ocserv()
+        changed_tls = _write_tls_files()
+        changed_radcli = _write_radcli()
+        changed_ocserv = _write_ocserv_conf()
+        _systemd_enable_ocserv(changed_ocserv, changed_radcli, changed_tls)
         logger.info("ocserv: deployed and active (protocol=ocserv)")
     except Exception as exc:
         logger.error("ocserv: deploy failed: %s", exc)

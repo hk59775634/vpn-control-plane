@@ -1,0 +1,29 @@
+version: '3.2'
+
+services:
+  freeradius:
+    image: "2stacks/freeradius"
+    command:
+      - /bin/sh
+      - -lc
+      - |
+        sed -i '64,69 s/^[[:space:]]*/# /' /etc/raddb/policy.d/filter
+        sed -i 's/^[[:space:]]*mask_accounting_data[[:space:]]*$/# mask_accounting_data/' /etc/raddb/sites-enabled/default
+        exec /start.sh
+    ports:
+      - "18121:1812/udp"
+      - "18131:1813/udp"
+    #volumes:
+      #- "./configs/radius/users:/etc/raddb/users"
+      #- "./configs/radius/clients.conf:/etc/raddb/clients.conf"
+    environment:
+      - DB_NAME=a_ai101_eu_org
+      - DB_HOST=103.6.4.141
+      - DB_USER=a_ai101_eu_org
+      - DB_PASS=niYD8N4ZewMF3DZC
+      - DB_PORT=3306
+      - RADIUS_KEY=c218m571y
+      - RAD_CLIENTS=0.0.0.0/0
+      - RAD_DEBUG=no
+    restart: always
+

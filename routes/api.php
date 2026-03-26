@@ -141,6 +141,7 @@ Route::put('/v1/me/password', function () { return response()->json([], 501); })
 Route::get('/v1/admin/summary', [$admin, 'summary']);
 Route::get('/v1/admin/analytics', [$admin, 'analytics']);
 Route::get('/v1/admin/servers', [$admin, 'listServers']);
+Route::get('/v1/admin/online_sessions', [$admin, 'listOnlineSessions']);
 Route::get('/v1/admin/users', [$admin, 'listUsers']);
 Route::patch('/v1/admin/users/{id}/role', [$admin, 'updateUserRole']);
 Route::post('/v1/admin/users', [$admin, 'createUser']);

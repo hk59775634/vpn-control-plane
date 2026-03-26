@@ -332,6 +332,14 @@ class AgentOpsController extends Controller
             'metrics.cpu_percent' => 'nullable|numeric',
             'metrics.mem_percent' => 'nullable|numeric',
             'metrics.load_1' => 'nullable|numeric',
+            'metrics.online_users' => 'nullable|integer|min:0|max:1000000',
+            'online_sessions' => 'nullable|array|max:2000',
+            'online_sessions.*.username' => 'nullable|string|max:255',
+            'online_sessions.*.source_ip' => 'nullable|string|max:255',
+            'online_sessions.*.connected_seconds' => 'nullable|numeric|min:0|max:31536000',
+            'online_sessions.*.rx_bytes' => 'nullable|numeric|min:0',
+            'online_sessions.*.tx_bytes' => 'nullable|numeric|min:0',
+            'online_sessions.*.protocol' => 'nullable|string|max:32',
             'meta' => 'nullable|array',
             'meta.config_revision_ts' => 'nullable|integer|min:0',
             'pull_limit' => 'nullable|integer|min:1|max:100',
@@ -354,6 +362,12 @@ class AgentOpsController extends Controller
             'last_heartbeat_at' => now(),
             'agent_status' => 'online',
         ];
+        if (Schema::hasColumn('servers', 'online_users') && array_key_exists('online_users', $metrics)) {
+            $fill['online_users'] = max(0, (int) $metrics['online_users']);
+        }
+        if (Schema::hasColumn('servers', 'online_sessions') && array_key_exists('online_sessions', $v)) {
+            $fill['online_sessions'] = $this->normalizeOnlineSessionsForStorage($v['online_sessions'] ?? null);
+        }
         if (Schema::hasColumn('servers', 'agent_reported_config_ts') && array_key_exists('config_revision_ts', $meta)) {
             $fill['agent_reported_config_ts'] = max(0, (int) $meta['config_revision_ts']);
         }
@@ -589,6 +603,55 @@ class AgentOpsController extends Controller
             'agent_deploy_at' => null,
             'updated_at' => now(),
         ]);
+    }
+
+    /**
+     * 将心跳中的 online_sessions 规范为可 JSON 存储的标量，避免 float/字符串导致落库失败或前端不一致。
+     *
+     * @param  array<int, mixed>|null  $sessions
+     * @return array<int, array<string, mixed>>
+     */
+    private function normalizeOnlineSessionsForStorage(?array $sessions): array
+    {
+        if ($sessions === null || $sessions === []) {
+            return [];
+        }
+        $out = [];
+        foreach ($sessions as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $username = array_key_exists('username', $row) && $row['username'] !== null && $row['username'] !== ''
+                ? Str::limit((string) $row['username'], 255, '')
+                : null;
+            $sourceIp = array_key_exists('source_ip', $row) && $row['source_ip'] !== null && $row['source_ip'] !== ''
+                ? Str::limit((string) $row['source_ip'], 255, '')
+                : null;
+            $proto = array_key_exists('protocol', $row) && $row['protocol'] !== null && $row['protocol'] !== ''
+                ? Str::limit((string) $row['protocol'], 32, '')
+                : null;
+
+            $conn = $row['connected_seconds'] ?? null;
+            $rx = $row['rx_bytes'] ?? null;
+            $tx = $row['tx_bytes'] ?? null;
+
+            $out[] = [
+                'username' => $username,
+                'source_ip' => $sourceIp,
+                'connected_seconds' => $conn === null || $conn === ''
+                    ? null
+                    : max(0, min(31536000, (int) round((float) $conn))),
+                'rx_bytes' => $rx === null || $rx === ''
+                    ? null
+                    : max(0, (int) round((float) $rx)),
+                'tx_bytes' => $tx === null || $tx === ''
+                    ? null
+                    : max(0, (int) round((float) $tx)),
+                'protocol' => $proto,
+            ];
+        }
+
+        return $out;
     }
 
     private function resolveServerFromAgentToken(Request $request): Server

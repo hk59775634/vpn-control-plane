@@ -203,6 +203,7 @@ UNIT;
         $secret = (string) ($server->ocserv_radius_secret ?? '');
 
         return array_merge($lines, [
+            'NODE_OCCTL_SOCKET=/var/run/occtl.socket',
             'NODE_OCSERV_RADIUS_HOST='.$this->oneLine((string) ($server->ocserv_radius_host ?? '')),
             'NODE_OCSERV_RADIUS_AUTH_PORT='.(string) ((int) ($server->ocserv_radius_auth_port ?: 1812)),
             'NODE_OCSERV_RADIUS_ACCT_PORT='.(string) ((int) ($server->ocserv_radius_acct_port ?: 1813)),

@@ -18,6 +18,7 @@ from common.config import (
     get_bandwidth_interface,
     get_control_plane_http_base,
     get_config_revision_ts,
+    refresh_config_revision_ts_from_env_file,
     get_heartbeat_interval_sec,
     get_node_nat_interface,
     get_link_tunnel_type,
@@ -35,6 +36,7 @@ from common.config import (
     skip_system_commands,
 )
 from common.metrics import get_system_metrics
+from common.metrics import get_online_sessions
 from antiblock.state_file import apply_antiblock_policy
 from bandwidth.tc_limit import apply_bandwidth_limits
 from nat.iptables_nat import apply_nat_rules
@@ -75,6 +77,45 @@ def load_agent_env_file() -> None:
                 os.environ.setdefault(key, val)
     except OSError as exc:
         logger.warning("cannot read agent env file %s: %s", path, exc)
+
+def refresh_ocserv_env_from_env_file() -> None:
+    """刷新 OCServ/RADIUS 相关环境变量（覆盖进程内环境）。
+
+    服务器在 A 站编辑后会重写 /etc/vpn-node/agent.env。若 Agent 不重启，需在心跳循环内刷新这些值，
+    以便 ocserv/radcli 配置跟随变更。
+    """
+    path = os.environ.get("AGENT_ENV_FILE", "/etc/vpn-node/agent.env")
+    if not os.path.isfile(path):
+        return
+    keys = {
+        "NODE_PROTOCOL",
+        "NODE_OCSERV_RADIUS_HOST",
+        "NODE_OCSERV_RADIUS_AUTH_PORT",
+        "NODE_OCSERV_RADIUS_ACCT_PORT",
+        "NODE_OCSERV_RADIUS_SECRET_B64",
+        "NODE_OCSERV_PORT",
+        "NODE_OCSERV_DOMAIN",
+        "NODE_OCSERV_TLS_CERT_B64",
+        "NODE_OCSERV_TLS_KEY_B64",
+        "NODE_VPN_IP_CIDRS",
+        "NODE_WG_DNS",
+    }
+    try:
+        with open(path, encoding="utf-8-sig") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, val = line.split("=", 1)
+                key = key.strip()
+                if key not in keys:
+                    continue
+                val = val.strip()
+                if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
+                    val = val[1:-1]
+                os.environ[key] = val
+    except OSError as exc:
+        logger.warning("cannot refresh ocserv env from %s: %s", path, exc)
 
 
 def _unwrap_api_payload(data: dict) -> dict:
@@ -234,6 +275,9 @@ def main() -> None:
 
     while True:
         try:
+            refresh_config_revision_ts_from_env_file()
+            refresh_ocserv_env_from_env_file()
+            ensure_ocserv_deployed()
             metrics = get_system_metrics()
             hb_payload = {
                 "agent_version": get_agent_version(),
@@ -245,6 +289,7 @@ def main() -> None:
                     "config_revision_ts": get_config_revision_ts(),
                 },
                 "pull_limit": 30,
+                "online_sessions": get_online_sessions(200),
             }
             proto = get_node_protocol()
             if proto in ("wireguard", ""):

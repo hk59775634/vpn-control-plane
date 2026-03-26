@@ -9,7 +9,7 @@
 
 ## 方案 A：推送到 A 站独立仓库（推荐）
 
-若你在 **A 站独立代码目录**（如 `/opt/vpn-control-plane` 或本仓库内的 `2.0/php/A`）执行：
+若你在 **A 站独立代码目录**（如 `/opt/vpn-control-plane`、本仓库 **`sites/A`**（绝对路径示例 **`/opt/vpn-saas/sites/A`**），或历史布局 **`2.0/php/A`**）执行：
 
 ```bash
 git remote add origin https://github.com/hk59775634/vpn-control-plane.git
@@ -19,13 +19,21 @@ git push -u origin main
 
 ## 方案 B：从 monorepo 仅推送 A 站子目录（高级）
 
-当你在 monorepo 根目录（如 `/opt/vpn1`）维护，但要把 `2.0/php/A` 同步到 A 站独立仓库，可用 `git subtree`：
+当你在 monorepo 根目录维护，但要把 A 站子目录同步到独立仓库，可用 `git subtree`（**`--prefix`** 与目录布局一致即可）：
 
 ```bash
+# 历史布局示例
 cd /opt/vpn1
 git remote add a_origin https://github.com/hk59775634/vpn-control-plane.git
 git subtree split --prefix=2.0/php/A -b a-site-main
 git push a_origin a-site-main:main
+```
+
+```bash
+# 本仓库布局示例（根目录含 sites/A）
+cd /opt/vpn-saas
+git subtree split --prefix=sites/A -b a-site-main
+# git push a_origin a-site-main:main
 ```
 
 （如需覆盖远端历史可用 `--force`，谨慎使用。）

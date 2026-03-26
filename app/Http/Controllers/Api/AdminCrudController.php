@@ -265,6 +265,60 @@ class AdminCrudController extends Controller
         return response()->json(Server::orderBy('id')->get());
     }
 
+    /**
+     * 聚合各接入服务器最近一次心跳上报的在线会话（扁平列表，供管理端「在线用户」页）。
+     */
+    public function listOnlineSessions(Request $request): JsonResponse
+    {
+        if (! Schema::hasTable('servers') || ! Schema::hasColumn('servers', 'online_sessions')) {
+            return response()->json([
+                'sessions' => [],
+                'total' => 0,
+                'generated_at' => now()->toIso8601String(),
+            ]);
+        }
+
+        $serverId = $request->filled('server_id') ? (int) $request->input('server_id') : null;
+        $query = Server::query()->orderBy('id');
+        if ($serverId !== null && $serverId > 0) {
+            $query->where('id', $serverId);
+        }
+
+        $servers = $query->get(['id', 'hostname', 'region', 'host', 'protocol', 'online_sessions']);
+
+        $rows = [];
+        foreach ($servers as $s) {
+            $sessions = $s->online_sessions;
+            if (! is_array($sessions)) {
+                continue;
+            }
+            foreach ($sessions as $sess) {
+                if (! is_array($sess)) {
+                    continue;
+                }
+                $rows[] = [
+                    'server_id' => $s->id,
+                    'server_hostname' => $s->hostname,
+                    'server_region' => $s->region,
+                    'server_host' => $s->host,
+                    'server_protocol' => $s->protocol,
+                    'username' => $sess['username'] ?? null,
+                    'source_ip' => $sess['source_ip'] ?? null,
+                    'connected_seconds' => isset($sess['connected_seconds']) ? (int) $sess['connected_seconds'] : null,
+                    'rx_bytes' => isset($sess['rx_bytes']) ? (int) $sess['rx_bytes'] : null,
+                    'tx_bytes' => isset($sess['tx_bytes']) ? (int) $sess['tx_bytes'] : null,
+                    'protocol' => $sess['protocol'] ?? null,
+                ];
+            }
+        }
+
+        return response()->json([
+            'sessions' => $rows,
+            'total' => count($rows),
+            'generated_at' => now()->toIso8601String(),
+        ]);
+    }
+
     public function createServer(Request $request): JsonResponse
     {
         $v = $request->validate([

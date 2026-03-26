@@ -71,6 +71,33 @@ def get_config_revision_ts() -> int:
         return 0
 
 
+def refresh_config_revision_ts_from_env_file() -> None:
+    """从 agent.env 重新加载 CONFIG_REVISION_TS（覆盖进程内环境）。
+
+    部署脚本更新 /etc/vpn-node/agent.env 后，若进程未及时重启，仍可在下一次心跳上报最新修订号。
+    """
+    path = os.environ.get("AGENT_ENV_FILE", "/etc/vpn-node/agent.env")
+    if not os.path.isfile(path):
+        return
+    try:
+        with open(path, encoding="utf-8-sig") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, val = line.split("=", 1)
+                key = key.strip()
+                if key != "CONFIG_REVISION_TS":
+                    continue
+                val = val.strip()
+                if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
+                    val = val[1:-1]
+                os.environ["CONFIG_REVISION_TS"] = val
+                return
+    except OSError:
+        return
+
+
 def get_heartbeat_interval_sec() -> int:
     raw = os.environ.get("HEARTBEAT_INTERVAL_SEC", "15").strip()
     try:
@@ -114,6 +141,11 @@ def get_link_wg_allowed_ips() -> str:
 
 def get_node_protocol() -> str:
     return os.environ.get("NODE_PROTOCOL", "").strip().lower()
+
+
+def get_occtl_socket() -> str:
+    """与 ocserv.conf 中 occtl-socket-file 一致；未设置时尝试默认 /var/run/occtl.socket。"""
+    return os.environ.get("NODE_OCCTL_SOCKET", "").strip()
 
 
 def get_node_nat_topology() -> str:

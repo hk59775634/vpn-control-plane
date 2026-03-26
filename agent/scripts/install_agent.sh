@@ -238,8 +238,10 @@ CONTEXT_JSON="$(vpn_curl_a -fsSL --connect-timeout 25 --max-time 90 \
   exit 1
 }
 
+# 首次仅解析 server_id / 下载 URL 等；agent.env 在「下载包之后」再拉取 install-context 写入，
+# 避免下载耗时期间用户在 A 站保存服务器导致 CONFIG_REVISION_TS 已升高而落盘仍是旧值（控制台长期「待下发」）。
 eval "$(printf '%s' "$CONTEXT_JSON" | python3 -c "
-import json, pathlib, sys
+import json, sys
 try:
     j = json.load(sys.stdin)
 except Exception as e:
@@ -250,8 +252,6 @@ for k in ('env', 'server_id', 'package_url'):
     if k not in d:
         print('[vpn-install] install-context 缺少字段:', k, file=sys.stderr)
         sys.exit(1)
-pathlib.Path('/tmp/vpn-install.env').write_text(d['env'])
-pathlib.Path('/tmp/vpn-install-systemd.service').write_text(d.get('systemd_unit', ''))
 print('export SERVER_ID=' + str(int(d['server_id'])))
 print('export VPN_PKG_URL=' + json.dumps(d['package_url']))
 print('export VPN_LABEL=' + json.dumps(d.get('stage_label', '节点')))
@@ -267,6 +267,32 @@ find "${VPN_REMOTE_DIR}" -mindepth 1 -delete
 vpn_report running "${VPN_LABEL}：下载 Agent 包…"
 vpn_download_and_extract "${VPN_PKG_URL}" "${VPN_REMOTE_DIR}"
 
+vpn_report running "${VPN_LABEL}：拉取最新 install-context 并写入 agent.env（对齐 CONFIG_REVISION_TS）…"
+CONTEXT_JSON="$(vpn_curl_a -fsSL --connect-timeout 25 --max-time 90 \
+  "${API_BASE}/api/v1/agent/install-context")" || {
+  echo "[vpn-install] 二次拉取 install-context 失败，无法写入与 A 站一致的 agent.env" >&2
+  exit 1
+}
+printf '%s' "$CONTEXT_JSON" | python3 -c "
+import json, pathlib, sys
+try:
+    j = json.load(sys.stdin)
+except Exception as e:
+    print('[vpn-install] install-context 不是合法 JSON:', e, file=sys.stderr)
+    sys.exit(1)
+d = j.get('data') or j
+for k in ('env', 'server_id', 'package_url'):
+    if k not in d:
+        print('[vpn-install] install-context 缺少字段:', k, file=sys.stderr)
+        sys.exit(1)
+sid = int(d['server_id'])
+if sid != int(${SERVER_ID:?}):
+    print('[vpn-install] 错误：二次 install-context 的 server_id=%s 与首次 %s 不一致' % (sid, ${SERVER_ID}), file=sys.stderr)
+    sys.exit(1)
+pathlib.Path('/tmp/vpn-install.env').write_text(d['env'])
+pathlib.Path('/tmp/vpn-install-systemd.service').write_text(d.get('systemd_unit', ''))
+"
+
 vpn_report running "${VPN_LABEL}：写入 agent.env 与 systemd…"
 install -m 0600 /tmp/vpn-install.env /etc/vpn-node/agent.env
 install -m 0644 /tmp/vpn-install-systemd.service /etc/systemd/system/vpn-node-agent.service
@@ -275,8 +301,13 @@ rm -f /tmp/vpn-install.env /tmp/vpn-install-systemd.service
 vpn_report running "${VPN_LABEL}：启动 vpn-node-agent.service…"
 if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
   systemctl daemon-reload
+  # enable/start + 强制重启，确保加载最新 agent 代码与 /etc/vpn-node/agent.env
   if ! systemctl enable --now vpn-node-agent.service; then
     echo "[vpn-install] systemctl enable --now 失败，请检查 journalctl -u vpn-node-agent -e" >&2
+    exit 1
+  fi
+  if ! systemctl restart vpn-node-agent.service; then
+    echo "[vpn-install] systemctl restart 失败，请检查 journalctl -u vpn-node-agent -e" >&2
     exit 1
   fi
 else

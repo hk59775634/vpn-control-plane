@@ -25,6 +25,7 @@
     </button>
     <div x-show="sidebarGroupsOpen.infra">
         <a href="#" class="console-sidebar-link" :class="{ 'active': tab === 'servers' }" @click.prevent="setTab('servers'); loadServers(); editingServer = null">接入服务器</a>
+        <a href="#" class="console-sidebar-link" :class="{ 'active': tab === 'online_users' }" @click.prevent="onlineUsersFilter.server_id = ''; onlineUsersFilter.q = ''; setTab('online_users'); if (!servers.length) loadServers().catch(() => {}); loadOnlineSessions()">在线用户</a>
         <a href="#" class="console-sidebar-link" :class="{ 'active': tab === 'ip_pool' }" @click.prevent="setTab('ip_pool'); loadIPPool()">IP 池</a>
         <a href="#" class="console-sidebar-link" :class="{ 'active': tab === 'snat_maps' }" @click.prevent="setTab('snat_maps'); loadSnatMaps()">SNAT 映射表</a>
         <a href="#" class="console-sidebar-link" :class="{ 'active': tab === 'provision_audit' }" @click.prevent="setTab('provision_audit'); loadProvisionAuditLogs()">资源审计</a>
@@ -562,35 +563,25 @@
             <div>
                 <h2 class="text-lg font-semibold text-slate-900">接入服务器</h2>
                 <p class="mt-1 text-sm text-slate-500">
-                    可与 <strong>NAT 服务器</strong> 同机一体（双公网口：如 eth0=CN、eth1=HK），也可分体：接入机 CN 公网 + 与 NAT 机互联（内网 / WireGuard 等），NAT 机 HK 公网 + 互联口。
-                    请在编辑中填写 <strong>NAT 拓扑</strong> 与各网卡角色，便于运维与 Agent 默认出口推断。
-                    <span class="block mt-1 text-slate-600">「配置同步」列对比 <strong>A 站配置修订时间戳</strong>（保存服务器时递增）与 <strong>节点 agent.env 中的 CONFIG_REVISION_TS</strong>（心跳上报）；一致为已同步，否则需重新「部署 Agent」下发最新 env。接入机与 NAT 机各占一行、各自对比。</span>
+                    支持两种部署方式：<strong>一体</strong>（接入与 NAT 同机，例：eth0=CN、eth1=HK）和 <strong>分体</strong>（接入机 CN 公网 + 与 NAT 机互联；NAT 机 HK 公网 + 互联口）。
+                    <span class="block mt-1 text-slate-600">请在编辑中完整填写 <strong>NAT 拓扑</strong> 与网卡角色，用于运维排障和 Agent 出口推断。</span>
+                    <span class="block mt-1 text-slate-600">「配置同步」会对比 A 站 <strong>config_revision_ts</strong>（保存服务器后递增）与节点上报的 <strong>CONFIG_REVISION_TS</strong>；一致即“已同步”，不一致请重新「部署 Agent」下发最新 env。分体场景下，接入机与 NAT 机会分别显示并分别对比。</span>
                 </p>
             </div>
-            <button type="button" class="console-btn-primary" @click.prevent="openServerCreatePage()">新建接入服务器（独立页面）</button>
+            <button type="button" class="console-btn-primary" @click.prevent="openServerCreatePage()">添加服务器</button>
         </div>
         <div class="console-card overflow-hidden">
             <div class="overflow-x-auto">
-                <table class="w-full text-sm" id="as-server-table">
+                <table class="w-full text-xs leading-snug" id="as-server-table">
                     <thead class="bg-zinc-50 text-zinc-600">
                         <tr>
-                            <th class="text-left py-3 px-4">ID</th>
-                            <th class="text-left py-3 px-4">主机名</th>
-                            <th class="text-left py-3 px-4">区域</th>
-                            <th class="text-left py-3 px-4">NAT 拓扑</th>
-                            <th class="text-left py-3 px-4">成本(分)</th>
-                            <th class="text-left py-3 px-4">协议</th>
-                            <th class="text-left py-3 px-4">域名/IP</th>
-                            <th class="text-left py-3 px-4">WG 配置</th>
-                            <th class="text-left py-3 px-4">SSH</th>
-                            <th class="text-left py-3 px-4">配置检查</th>
-                            <th class="text-left py-3 px-4 min-w-[9rem]">部署进度</th>
-                            <th class="text-left py-3 px-4">Agent</th>
-                            <th class="text-left py-3 px-4">版本</th>
-                            <th class="text-left py-3 px-4">最后心跳</th>
-                            <th class="text-left py-3 px-4 min-w-[11rem]">配置同步</th>
-                            <th class="text-left py-3 px-4">备注</th>
-                            <th class="text-left py-3 px-4">操作</th>
+                            <th class="text-left py-2 px-3">ID</th>
+                            <th class="text-left py-2 px-3 min-w-[14rem]">服务器</th>
+                            <th class="text-left py-2 px-3 min-w-[9rem]">拓扑</th>
+                            <th class="text-left py-2 px-3 min-w-[9rem]">接入</th>
+                            <th class="text-left py-2 px-3 min-w-[11rem]">运行状态</th>
+                            <th class="text-left py-2 px-3 min-w-[11rem]">配置同步</th>
+                            <th class="text-left py-2 px-3 min-w-[10rem]">操作</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -633,44 +624,41 @@
                                 :data-split-nat-ssh-password="s.split_nat_ssh_password || ''"
                                 :data-split-nat-hk-public-iface="s.split_nat_hk_public_iface || ''"
                                 :data-notes="s.notes || ''">
-                                <td class="py-3 px-4" x-text="s.id"></td>
-                                <td class="py-3 px-4" x-text="s.hostname"></td>
-                                <td class="py-3 px-4" x-text="s.region"></td>
-                                <td class="py-3 px-4">
+                                <td class="py-2 px-3 align-top" x-text="s.id"></td>
+                                <td class="py-2 px-3 align-top">
+                                    <span class="block font-medium text-zinc-800" x-text="s.hostname || '-'"></span>
+                                    <span class="block mt-0.5 text-[10px] text-zinc-500" x-text="'区域: ' + (s.region || '-')"></span>
+                                    <span class="block mt-0.5 text-[10px] text-zinc-500 break-all" x-text="'地址: ' + (s.host || '-')"></span>
+                                </td>
+                                <td class="py-2 px-3 align-top">
                                     <span class="text-[11px] rounded bg-zinc-100 px-1.5 py-0.5 text-zinc-700"
                                           x-text="s.nat_topology === 'split_access' ? '分体·接入' : (s.nat_topology === 'split_nat' ? '分体·NAT' : '一体')"></span>
                                     <span class="mt-0.5 block text-[10px] text-zinc-500"
                                           x-show="s.cn_public_iface || s.hk_public_iface"
                                           x-text="[s.cn_public_iface ? 'CN:' + s.cn_public_iface : '', s.hk_public_iface ? 'HK:' + s.hk_public_iface : ''].filter(Boolean).join(' ')"></span>
                                 </td>
-                                <td class="py-3 px-4" x-text="((Number(s.cost_cents||0)/100).toFixed(2)) + ' 元'"></td>
-                                <td class="py-3 px-4" x-text="s.protocol || '-'"></td>
-                                <td class="py-3 px-4" x-text="s.host || '-'"></td>
-                                <td class="py-3 px-4">
-                                    <div class="flex flex-col">
-                                        <span class="text-[11px] text-zinc-600" x-text="s.vpn_ip_cidrs ? ('CIDR: ' + s.vpn_ip_cidrs) : 'CIDR: -'"></span>
-                                        <span class="mt-0.5 text-[11px] text-zinc-600" x-text="s.wg_public_key ? ('PubKey: ' + String(s.wg_public_key).slice(0, 10) + '…') : 'PubKey: -'"></span>
-                                    </div>
+                                <td class="py-2 px-3 align-top">
+                                    <span class="block" x-text="s.protocol || '-'"></span>
+                                    <span class="block mt-0.5 text-[10px] text-zinc-500" x-text="((Number(s.cost_cents||0)/100).toFixed(2)) + ' 元'"></span>
+                                    <span class="block mt-0.5 text-[10px] text-zinc-500 break-all" x-text="(s.ssh_user || 'root') + '@' + (s.host || '-') + ':' + (s.ssh_port || 22)"></span>
                                 </td>
-                                <td class="py-3 px-4" x-text="(s.ssh_user || 'root') + '@' + (s.host || '-') + ':' + (s.ssh_port || 22)"></td>
-                                <td class="py-3 px-4">
+                                <td class="py-2 px-3 align-top">
                                     <span :class="serverHealthClass(s)" x-text="serverHealthText(s)"></span>
-                                </td>
-                                <td class="py-3 px-4 align-top">
                                     <span :class="agentDeployClass(s)" :title="agentDeployTitle(s)" class="block max-w-[28rem] text-[11px] leading-snug whitespace-pre-wrap break-words" x-text="agentDeploySummary(s)"></span>
-                                </td>
-                                <td class="py-3 px-4 align-top">
                                     <span :class="agentRuntimeClass(s)" class="block text-[11px] leading-snug" x-text="agentRuntimeLabel(s)"></span>
+                                    <span class="block mt-0.5 font-mono text-[10px] text-zinc-500" x-text="s.agent_version || '—'"></span>
+                                    <button type="button" class="mt-0.5 text-[10px] text-indigo-700 underline" @click.prevent="goToOnlineUsersPage(s)">
+                                        在线用户: <span x-text="Number(s.online_users || 0)"></span>
+                                    </button>
                                 </td>
-                                <td class="py-3 px-4 font-mono text-[11px]" x-text="s.agent_version || '—'"></td>
-                                <td class="py-3 px-4 text-[11px] text-zinc-600 whitespace-nowrap" x-text="formatServerHeartbeat(s)"></td>
-                                <td class="py-3 px-4 align-top max-w-[15rem]">
+                                <td class="py-2 px-3 align-top max-w-[15rem]">
+                                    <span class="block text-[11px] text-zinc-600 whitespace-nowrap" x-text="formatServerHeartbeat(s)"></span>
                                     <span class="block text-[11px] leading-tight" :class="configSyncUi(s).badgeClass" x-text="configSyncUi(s).badge"></span>
                                     <span class="mt-1 block text-[10px] leading-snug text-zinc-500">A <span x-text="configSyncUi(s).aLine"></span></span>
                                     <span class="block text-[10px] leading-snug text-zinc-500">节点 <span x-text="configSyncUi(s).bLine"></span></span>
                                 </td>
-                                <td class="py-3 px-4" x-text="s.notes || '-'"></td>
-                                <td class="py-3 px-4 flex gap-2">
+                                <td class="py-2 px-3 align-top flex flex-col gap-1">
+                                    <button type="button" class="console-link text-xs text-zinc-700" @click.prevent="openServerDetail(s)">详情</button>
                                     <button type="button" class="console-link text-xs" @click.prevent="openServerEditPage(s)">编辑</button>
                                     <button type="button" class="console-link text-xs text-indigo-600" @click.prevent="installServerAgent(s.id)">部署Agent</button>
                                     <button type="button" class="console-link text-xs text-red-600" @click.prevent="deleteServerAndReload(s.id)">删除</button>
@@ -680,6 +668,126 @@
                     </tbody>
                 </table>
             </div>
+        </div>
+        <div x-show="selectedServerDetail" x-cloak class="fixed inset-0 z-40">
+            <div class="absolute inset-0 bg-black/30" @click="closeServerDetail()"></div>
+            <div class="absolute right-0 top-0 h-full w-full max-w-2xl overflow-y-auto bg-white shadow-2xl">
+                <div class="sticky top-0 border-b bg-white px-5 py-3 flex items-center justify-between">
+                    <h3 class="text-sm font-semibold text-slate-900">服务器详情</h3>
+                    <button type="button" class="as-modal-close" @click="closeServerDetail()">&times;</button>
+                </div>
+                <div class="p-5 space-y-4 text-sm text-zinc-700" x-show="selectedServerDetail">
+                    <div>
+                        <p class="text-xs text-zinc-500">基础</p>
+                        <p class="mt-1"><strong x-text="selectedServerDetail?.hostname || '-'"></strong> · <span x-text="selectedServerDetail?.region || '-'"></span></p>
+                        <p class="mt-1 text-xs text-zinc-500" x-text="'地址: ' + (selectedServerDetail?.host || '-')"></p>
+                        <p class="mt-1 text-xs text-zinc-500" x-text="'协议: ' + (selectedServerDetail?.protocol || '-') + ' · 成本: ' + ((Number(selectedServerDetail?.cost_cents || 0)/100).toFixed(2)) + ' 元'"></p>
+                    </div>
+                    <div>
+                        <p class="text-xs text-zinc-500">拓扑与网卡</p>
+                        <p class="mt-1 text-xs" x-text="'模式: ' + (selectedServerDetail?.nat_topology || '-')"></p>
+                        <p class="mt-1 text-xs" x-text="'CN: ' + (selectedServerDetail?.cn_public_iface || '-') + ' · HK: ' + (selectedServerDetail?.hk_public_iface || '-')"></p>
+                        <p class="mt-1 text-xs" x-text="'互联口: ' + (selectedServerDetail?.peer_link_iface || '-') + ' · 本地IP: ' + (selectedServerDetail?.peer_link_local_ip || '-') + ' · 对端IP: ' + (selectedServerDetail?.peer_link_remote_ip || '-')"></p>
+                    </div>
+                    <div>
+                        <p class="text-xs text-zinc-500">WireGuard / OCServ</p>
+                        <p class="mt-1 text-xs break-all" x-text="'VPN CIDR: ' + (selectedServerDetail?.vpn_ip_cidrs || '-')"></p>
+                        <p class="mt-1 text-xs break-all" x-text="'WG 公钥: ' + (selectedServerDetail?.wg_public_key || '-')"></p>
+                        <p class="mt-1 text-xs break-all" x-text="'RADIUS: ' + (selectedServerDetail?.ocserv_radius_host || '-') + ':' + (selectedServerDetail?.ocserv_radius_auth_port || '-') + ' / acct ' + (selectedServerDetail?.ocserv_radius_acct_port || '-')"></p>
+                        <p class="mt-1 text-xs break-all" x-text="'OCServ 端口/域名: ' + (selectedServerDetail?.ocserv_port || '-') + ' / ' + (selectedServerDetail?.ocserv_domain || '-')"></p>
+                    </div>
+                    <div>
+                        <p class="text-xs text-zinc-500">运行与同步</p>
+                        <p class="mt-1 text-xs" x-text="'部署: ' + agentDeploySummary(selectedServerDetail)"></p>
+                        <p class="mt-1 text-xs" x-text="'Agent: ' + agentRuntimeLabel(selectedServerDetail) + ' · 版本 ' + (selectedServerDetail?.agent_version || '-')"></p>
+                        <div class="mt-1 text-xs flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <span x-text="'在线用户: ' + Number(selectedServerDetail?.online_users || 0)"></span>
+                            <button type="button" class="text-indigo-700 underline" @click.prevent="closeServerDetail(); goToOnlineUsersPage(selectedServerDetail)">查看会话列表</button>
+                        </div>
+                        <p class="mt-1 text-xs" x-text="'心跳: ' + formatServerHeartbeat(selectedServerDetail)"></p>
+                        <p class="mt-1 text-xs" x-text="'配置同步: ' + configSyncUi(selectedServerDetail).badge"></p>
+                    </div>
+                    <div>
+                        <p class="text-xs text-zinc-500">SSH 与备注</p>
+                        <p class="mt-1 text-xs break-all" x-text="(selectedServerDetail?.ssh_user || 'root') + '@' + (selectedServerDetail?.host || '-') + ':' + (selectedServerDetail?.ssh_port || 22)"></p>
+                        <p class="mt-1 text-xs whitespace-pre-wrap break-words" x-text="selectedServerDetail?.notes || '—'"></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {{-- 在线用户（全站聚合） --}}
+    <div x-show="tab === 'online_users'" class="space-y-4">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+                <h2 class="text-lg font-semibold text-slate-900">在线用户</h2>
+                <p class="mt-1 text-sm text-slate-500">展示各接入服务器最近一次心跳上报的会话。可用关键词筛选用户名、来源 IP、服务器名称、区域、地址等；亦可按服务器筛选。</p>
+                <p class="mt-1 text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded px-2 py-1.5 max-w-3xl">若列表为空但接入服务器行仍显示有人在线，多为节点未上报 <code class="text-[11px]">online_sessions</code>（请重新部署 Agent 以更新采集逻辑），或数据库缺少 <code class="text-[11px]">servers.online_sessions</code> 列（需执行迁移）。</p>
+                <p class="mt-1 text-xs text-red-600" x-show="onlineSessionsLoadError" x-text="onlineSessionsLoadError"></p>
+                <p class="mt-1 text-xs text-zinc-500" x-show="onlineSessionsGeneratedAt" x-text="'数据时间: ' + onlineSessionsGeneratedAt"></p>
+            </div>
+            <button type="button" class="console-btn-secondary shrink-0" @click.prevent="loadOnlineSessions()">刷新</button>
+        </div>
+        <div class="console-card p-4 flex flex-wrap items-end gap-3">
+            <div class="min-w-[12rem] flex-1">
+                <label class="text-xs text-slate-500">搜索</label>
+                <input type="search" class="console-filter-input mt-1 w-full" placeholder="用户名、IP、服务器、区域…" x-model.debounce.300ms="onlineUsersFilter.q">
+            </div>
+            <div class="min-w-[11rem]">
+                <label class="text-xs text-slate-500">服务器</label>
+                <select class="console-filter-input mt-1 w-full" x-model="onlineUsersFilter.server_id">
+                    <option value="">全部服务器</option>
+                    <template x-for="opt in onlineUsersServerOptions()" :key="opt[0]">
+                        <option :value="String(opt[0])" x-text="opt[1]"></option>
+                    </template>
+                </select>
+            </div>
+            <p class="text-xs text-zinc-600 pb-1" x-text="'共 ' + (onlineSessionsAll || []).length + ' 条会话，当前显示 ' + filteredOnlineSessions().length + ' 条'"></p>
+        </div>
+        <div class="console-card overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-xs leading-snug">
+                    <thead class="bg-zinc-50 text-zinc-600">
+                        <tr>
+                            <th class="text-left py-2 px-3 min-w-[10rem]">服务器</th>
+                            <th class="text-left py-2 px-3">区域</th>
+                            <th class="text-left py-2 px-3">接入协议</th>
+                            <th class="text-left py-2 px-3">用户名</th>
+                            <th class="text-left py-2 px-3">会话协议</th>
+                            <th class="text-left py-2 px-3">来源 IP</th>
+                            <th class="text-left py-2 px-3">在线时长</th>
+                            <th class="text-left py-2 px-3">流量（下/上）</th>
+                            <th class="text-left py-2 px-3 min-w-[10rem]">流量图</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="(u, idx) in filteredOnlineSessions()" :key="(u.server_id || '') + '-' + idx + '-' + (u.username || '') + '-' + (u.source_ip || '')">
+                            <tr class="border-t border-zinc-100 hover:bg-zinc-50/50">
+                                <td class="py-2 px-3 align-top">
+                                    <span class="font-medium text-zinc-800" x-text="u.server_hostname || '-'"></span>
+                                    <span class="block text-[10px] text-zinc-500" x-text="'ID ' + (u.server_id || '-') + ' · ' + (u.server_host || '-')"></span>
+                                </td>
+                                <td class="py-2 px-3 align-top break-all" x-text="u.server_region || '-'"></td>
+                                <td class="py-2 px-3 align-top" x-text="u.server_protocol || '-'"></td>
+                                <td class="py-2 px-3 align-top break-all" x-text="u.username || '-'"></td>
+                                <td class="py-2 px-3 align-top" x-text="u.protocol || '-'"></td>
+                                <td class="py-2 px-3 align-top break-all font-mono" x-text="u.source_ip || '-'"></td>
+                                <td class="py-2 px-3 align-top whitespace-nowrap" x-text="formatDuration(u.connected_seconds || 0)"></td>
+                                <td class="py-2 px-3 align-top whitespace-nowrap" x-text="formatBytes(u.rx_bytes || 0) + ' / ' + formatBytes(u.tx_bytes || 0)"></td>
+                                <td class="py-2 px-3 align-top min-w-[10rem]">
+                                    <div class="h-2 w-full rounded bg-zinc-100 overflow-hidden flex">
+                                        <div class="bg-sky-500" :style="'width:' + flowRatio(u.rx_bytes || 0, u.tx_bytes || 0).down + '%'"></div>
+                                        <div class="bg-emerald-500" :style="'width:' + flowRatio(u.rx_bytes || 0, u.tx_bytes || 0).up + '%'"></div>
+                                    </div>
+                                    <div class="mt-1 text-[10px] text-zinc-500">蓝=下行，绿=上行</div>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+            <p x-show="!loading && filteredOnlineSessions().length === 0" class="py-10 text-center text-zinc-500 text-sm">暂无匹配的在线会话（或各节点尚未上报会话列表）</p>
         </div>
     </div>
 
@@ -2337,7 +2445,7 @@ function adminDashboard() {
     window.__adminApi = api;
     return {
         tab: localStorage.getItem('admin_tab') || 'overview',
-        tabTitles: { overview: '控制台', analytics: '数据分析', users: '管理员列表', vpn_accounts: '用户管理', purchased_products: '已购产品', products: '产品与定价', orders: '订单', servers: '接入服务器', server_form: '接入服务器配置', ip_pool: 'IP 池', snat_maps: 'SNAT 映射表', provision_audit: '资源审计', resellers: '分销商', payment_settings: '支付设置', runtime_settings: '安全与限流', security: '账户安全', help: '帮助与常见问题' },
+        tabTitles: { overview: '控制台', analytics: '数据分析', users: '管理员列表', vpn_accounts: '用户管理', purchased_products: '已购产品', products: '产品与定价', orders: '订单', servers: '接入服务器', online_users: '在线用户', server_form: '接入服务器配置', ip_pool: 'IP 池', snat_maps: 'SNAT 映射表', provision_audit: '资源审计', resellers: '分销商', payment_settings: '支付设置', runtime_settings: '安全与限流', security: '账户安全', help: '帮助与常见问题' },
         userEmail: '',
         userMenuOpen: false,
         sidebarGroupsOpen: { overview: true, business: true, infra: true, reseller: false, support: false },
@@ -2354,6 +2462,11 @@ function adminDashboard() {
         ordersFilter: { q: '', region: '', reseller_id: '' },
         orderDetailId: null,
         editingServer: null,
+        selectedServerDetail: null,
+        onlineSessionsAll: [],
+        onlineSessionsGeneratedAt: '',
+        onlineSessionsLoadError: '',
+        onlineUsersFilter: { q: '', server_id: '' },
         serverFormMode: 'create',
         formServer: { hostname: '', region: '', role: 'access', cost_cents: 0, host: '', ssh_port: 22, ssh_user: 'root', ssh_password: '', agent_enabled: true, nat_topology: 'combined', cn_public_iface: '', hk_public_iface: '', peer_link_iface: '', peer_link_local_ip: '', peer_link_remote_ip: '', link_tunnel_type: '', split_nat_host: '', split_nat_ssh_port: 22, split_nat_ssh_user: 'root', split_nat_ssh_password: '', split_nat_hk_public_iface: '', split_nat_multi_public_ip_enabled: false, protocol: 'wireguard', wg_private_key: '', wg_public_key: '', ocserv_radius_host: '', ocserv_radius_auth_port: 1812, ocserv_radius_acct_port: 1813, ocserv_radius_secret: '', ocserv_port: 443, ocserv_domain: '', ocserv_tls_cert_pem: '', ocserv_tls_key_pem: '', notes: '' },
         formOrder: { user_id: '', product_id: '' },
@@ -2619,6 +2732,9 @@ function adminDashboard() {
                 this.loadOrders();
             } else if (t === 'servers') {
                 this.loadServers();
+            } else if (t === 'online_users') {
+                if (!this.servers.length) this.loadServers().catch(() => {});
+                this.loadOnlineSessions();
             } else if (t === 'ip_pool') {
                 this.loadIPPool();
             } else if (t === 'snat_maps') {
@@ -2640,7 +2756,7 @@ function adminDashboard() {
         sidebarGroupForTab(t) {
             if (t === 'overview' || t === 'analytics') return 'overview';
             if (t === 'products' || t === 'orders') return 'business';
-            if (t === 'servers' || t === 'server_form' || t === 'ip_pool' || t === 'snat_maps' || t === 'provision_audit') return 'infra';
+            if (t === 'servers' || t === 'online_users' || t === 'server_form' || t === 'ip_pool' || t === 'snat_maps' || t === 'provision_audit') return 'infra';
             if (t === 'resellers' || t === 'vpn_accounts' || t === 'purchased_products') return 'reseller';
             return 'support';
         },
@@ -2889,8 +3005,96 @@ function adminDashboard() {
         loadServers() {
             return api('/api/v1/admin/servers').then(d => {
                 this.servers = d || [];
+                if (this.selectedServerDetail && this.selectedServerDetail.id) {
+                    const id = Number(this.selectedServerDetail.id);
+                    const fresh = this.servers.find(x => Number(x.id) === id);
+                    if (fresh) this.selectedServerDetail = fresh;
+                }
                 this.scheduleDeployPoll();
             }).catch(() => {});
+        },
+        openServerDetail(s) {
+            if (!s) return;
+            this.selectedServerDetail = s;
+        },
+        closeServerDetail() {
+            this.selectedServerDetail = null;
+        },
+        goToOnlineUsersPage(s) {
+            this.onlineUsersFilter.q = '';
+            this.onlineUsersFilter.server_id = (s && s.id != null) ? String(s.id) : '';
+            this.setTab('online_users');
+            if (!this.servers.length) this.loadServers().catch(() => {});
+            this.loadOnlineSessions();
+        },
+        onlineUsersServerOptions() {
+            const m = new Map();
+            for (const r of this.onlineSessionsAll || []) {
+                const id = r.server_id;
+                if (id == null) continue;
+                if (!m.has(id)) {
+                    const label = (r.server_hostname || '') + ' (#' + id + ')';
+                    m.set(id, label.trim() || ('#' + id));
+                }
+            }
+            for (const sv of this.servers || []) {
+                if (sv.id == null || m.has(sv.id)) continue;
+                const label = (sv.hostname || '') + ' (#' + sv.id + ')';
+                m.set(sv.id, label.trim() || ('#' + sv.id));
+            }
+            return [...m.entries()].sort((a, b) => Number(a[0]) - Number(b[0]));
+        },
+        filteredOnlineSessions() {
+            const q = (this.onlineUsersFilter.q || '').trim().toLowerCase();
+            const sid = (this.onlineUsersFilter.server_id || '').trim();
+            const all = this.onlineSessionsAll || [];
+            return all.filter(row => {
+                if (sid && String(row.server_id) !== sid) return false;
+                if (!q) return true;
+                const parts = [
+                    row.username, row.source_ip, row.server_hostname, row.server_region,
+                    row.server_host, String(row.server_id), row.protocol, row.server_protocol,
+                ];
+                const hay = parts.map(x => String(x ?? '').toLowerCase()).join('\n');
+                return hay.includes(q);
+            });
+        },
+        async loadOnlineSessions() {
+            this.loading = true;
+            this.onlineSessionsLoadError = '';
+            try {
+                const d = await api('/api/v1/admin/online_sessions');
+                this.onlineSessionsAll = (d && Array.isArray(d.sessions)) ? d.sessions : [];
+                this.onlineSessionsGeneratedAt = (d && d.generated_at) ? String(d.generated_at) : '';
+            } catch (e) {
+                this.onlineSessionsAll = [];
+                this.onlineSessionsGeneratedAt = '';
+                this.onlineSessionsLoadError = e.message || '加载在线会话失败';
+            }
+            this.loading = false;
+        },
+        formatDuration(sec) {
+            const n = Math.max(0, Number(sec || 0));
+            const h = Math.floor(n / 3600);
+            const m = Math.floor((n % 3600) / 60);
+            const s = Math.floor(n % 60);
+            if (h > 0) return `${h}h ${m}m`;
+            if (m > 0) return `${m}m ${s}s`;
+            return `${s}s`;
+        },
+        formatBytes(v) {
+            const n = Math.max(0, Number(v || 0));
+            if (n < 1024) return `${n.toFixed(0)} B`;
+            if (n < 1024 ** 2) return `${(n / 1024).toFixed(1)} KB`;
+            if (n < 1024 ** 3) return `${(n / 1024 ** 2).toFixed(1)} MB`;
+            return `${(n / 1024 ** 3).toFixed(2)} GB`;
+        },
+        flowRatio(down, up) {
+            const d = Math.max(0, Number(down || 0));
+            const u = Math.max(0, Number(up || 0));
+            const t = d + u;
+            if (t <= 0) return { down: 50, up: 50 };
+            return { down: (d / t) * 100, up: (u / t) * 100 };
         },
         loadUsers() { api('/api/v1/admin/users').then(d => { this.users = d || []; }).catch(() => {}); },
         loadVpnAccounts() { api('/api/v1/admin/vpn_users').then(d => { this.vpnAccounts = d || []; }).catch(() => {}); },
@@ -3250,6 +3454,7 @@ function adminDashboard() {
         },
         openServerEditPage(s) {
             this.serverFormMode = 'edit';
+            this.selectedServerDetail = null;
             this.formServer = {
                 id: s.id,
                 hostname: s.hostname || '',
@@ -3286,7 +3491,7 @@ function adminDashboard() {
                 ocserv_radius_host: s.ocserv_radius_host || '',
                 ocserv_radius_auth_port: s.ocserv_radius_auth_port || 1812,
                 ocserv_radius_acct_port: s.ocserv_radius_acct_port || 1813,
-                ocserv_radius_secret: '',
+                ocserv_radius_secret: s.ocserv_radius_secret || '',
                 ocserv_port: s.ocserv_port || 443,
                 ocserv_domain: s.ocserv_domain || '',
                 ocserv_tls_cert_pem: s.ocserv_tls_cert_pem || '',

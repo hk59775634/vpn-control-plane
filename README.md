@@ -34,16 +34,16 @@
 
 - 迁移包含 **`radcheck`** 等表；订单与 **`vpn_users`** 变更会通过 **`FreeradiusSyncService`** 同步。
 - 启用 Redis 认证缓存：`.env` 中 **`RADIUS_REDIS_AUTH_ENABLED=true`**（及 `REDIS_*`）；全量回填：**`php artisan radius:sync-cache`**。
-- 与 A 站同机部署 FreeRADIUS：**仓库根目录** **`infra/scripts/setup-freeradius-a-sql-redis.sh`**，说明见 **`infra/docs/OCSERV_FREERADIUS.md`**。
+- 与 A 站同机部署 FreeRADIUS：若完整 monorepo 含 **`infra/`**，脚本 **`infra/scripts/setup-freeradius-a-sql-redis.sh`**、说明 **`infra/docs/OCSERV_FREERADIUS.md`**；本快照无 `infra/` 时以运维文档为准。
 
 ### 节点 Agent
 
-- 源码目录：**`agent/`**（与 monorepo **`2.0/agent/`** 同步）；打包安装见 **`AGENT_BOOTSTRAP_TOKEN`**、**`GET /api/v1/agent/package`**。
+- 源码目录：本仓库为 **`agent/`**（即 `sites/A/agent`，与历史路径 **`2.0/agent`** / **`2.0/php/A/agent`** 同源）；打包安装见 **`AGENT_BOOTSTRAP_TOKEN`**、**`GET /api/v1/agent/package`**。
 - 心跳返回 **`policy`**（NAT / WG 限速 / 剔除 peer）；详见 **`agent/README.md`**。
 
 ### 推送到 GitHub（单仓 A 站时）
 
-见 **`docs/GITHUB_PUSH.md`**。若整仓为 monorepo（含 `2.0/`），请使用仓库根目录 **`GITHUB_PUSH.md`**。
+见 **`docs/GITHUB_PUSH.md`**。若整仓为 monorepo（含 **`sites/`** 或历史 **`2.0/`**），请使用对应仓库根目录的 **`GITHUB_PUSH.md`**（若有）。
 
 ### 仓库地址
 
