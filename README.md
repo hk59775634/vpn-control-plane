@@ -66,7 +66,7 @@
 ### 1. 获取代码
 
 ```bash
-git clone https://github.com/<你的用户名>/vpn-control-plane.git
+git clone https://github.com/hk59775634/vpn-control-plane.git
 cd vpn-control-plane
 ```
 
